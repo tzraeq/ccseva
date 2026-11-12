@@ -11,8 +11,12 @@ if [[ ! "$APP_VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
 	exit 1
 fi
 
-swift build -c release --arch arm64
-BIN_DIR="$(swift build -c release --arch arm64 --show-bin-path)"
+# Build for the host architecture by default (arm64 on Apple Silicon, x86_64 on Intel).
+# Override with: ARCH=arm64 ./scripts/build-app.sh
+ARCH="${ARCH:-$(uname -m)}"
+echo "Building for $ARCH"
+swift build -c release --arch "$ARCH"
+BIN_DIR="$(swift build -c release --arch "$ARCH" --show-bin-path)"
 BIN_PATH="$BIN_DIR/CCSeva"
 
 APP="dist/CCSeva.app"

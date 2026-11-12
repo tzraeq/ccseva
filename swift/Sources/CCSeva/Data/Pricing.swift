@@ -36,6 +36,34 @@ enum PricingTable {
         "claude-3-haiku": ModelPrice(input: 2.5e-07, output: 1.25e-06, cacheCreation: 3e-07, cacheRead: 3e-08),
     ]
 
+    /// User overrides from `~/.ccseva/pricing.json`, merged over the built-in table.
+    /// Format (USD per *million* tokens; cacheCreation/cacheRead optional):
+    /// { "claude-opus-5-5": { "input": 5, "output": 25, "cacheCreation": 6.25, "cacheRead": 0.5 } }
+    /// Keys are lowercased model-id prefixes. Edit the file and restart the app to apply.
+    static let userOverrides: [String: ModelPrice] = {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".ccseva/pricing.json")
+        guard let data = try? Data(contentsOf: url),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return [:] }
+        var out: [String: ModelPrice] = [:]
+        for (key, value) in obj {
+            guard let d = value as? [String: Any],
+                  let input = (d["input"] as? NSNumber)?.doubleValue,
+                  let output = (d["output"] as? NSNumber)?.doubleValue
+            else { continue }
+            let cw = (d["cacheCreation"] as? NSNumber)?.doubleValue ?? input * 1.25
+            let cr = (d["cacheRead"] as? NSNumber)?.doubleValue ?? input * 0.1
+            out[key.lowercased()] = ModelPrice(
+                input: input / 1e6, output: output / 1e6,
+                cacheCreation: cw / 1e6, cacheRead: cr / 1e6)
+        }
+        return out
+    }()
+
+    static let allPrices: [String: ModelPrice] =
+        prices.merging(userOverrides) { _, user in user }
+
     /// Longest-prefix lookup. Returns nil for unknown (non-Claude / third-party) models.
     static func price(for model: String) -> ModelPrice? {
         var normalized = model.lowercased()
@@ -44,7 +72,7 @@ enum PricingTable {
             normalized = String(normalized[range.lowerBound...])
         }
         var best: (key: String, price: ModelPrice)?
-        for (key, price) in prices where normalized.hasPrefix(key) {
+        for (key, price) in allPrices where normalized.hasPrefix(key) {
             if best == nil || key.count > best!.key.count {
                 best = (key, price)
             }
